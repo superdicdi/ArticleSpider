@@ -4,11 +4,16 @@
 #
 # Don't forget to add your pipeline to the ITEM_PIPELINES setting
 # See: https://doc.scrapy.org/en/latest/topics/item-pipeline.html
+import os
+import re
+import shutil
+
 from scrapy.exporters import JsonItemExporter
 from scrapy.pipelines.images import ImagesPipeline
 import pymysql
+from scrapy.utils.project import get_project_settings
 from twisted.enterprise import adbapi
-
+import scrapy
 
 class ArticlespiderPipeline(object):
     def process_item(self, item, spider):
@@ -68,7 +73,30 @@ class MysqlTwistedPipeline(object):
 
 
 class ArticleImagePipeline(ImagesPipeline):
+    # 从项目设置文件中导入图片下载路径
+    img_store = "images"
+
+    # 重写ImagesPipeline类的此方法
+    # 发送图片下载请求
+    # def get_media_requests(self, item, info):
+    #     image_url = item['image_url'] # 如果是集合需要遍历
+    #     yield scrapy.Request(image_url)
+
     def item_completed(self, results, item, info):
-        for ok, value in results:
-            item["image_url_path"] = value["path"]
+        # for ok, value in results:
+        #     item["image_url_path"] = value["path"]
+        image_path = [value["path"] for ok, value in results if ok]
+        # 定义分类保存的路径
+        try:
+            local_path = re.match(".*(\.com/|\.cn/)(.*)/((.*)(\.jpg|\.png))$", item['image_url'][0])
+            img_path = "%s/%s" % (self.img_store, local_path.group(2))
+            # 目录不存在则创建目录
+            if os.path.exists(img_path) == False:
+                os.makedirs(img_path)
+            # 将文件从默认下路路径移动到指定路径下
+            shutil.move(self.img_store + "/" + image_path[0], img_path + "/" + local_path.group(3))
+            item["image_url_path"] = img_path + "/" + local_path.group(3)
+        except Exception as e:
+            print(item['image_url'][0])
+            print(e)
         return item
